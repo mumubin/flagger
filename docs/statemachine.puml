@@ -1,0 +1,50 @@
+@startuml
+Initializing: the canary initializing is underway
+Initialized : the primary deployment, hpa and ClusterIP services have been created along with the service mesh or ingress objects \n\
+
+[*] --> Initializing : apply canary.flagger.app/podinfo
+Initializing --> Initialized:  scale down the canary target to 0 replicas after the service is pointing to the primary target
+
+State AdvanceCanary {
+
+Waiting:  the canary rollout is paused (waiting for confirmation to proceed)
+Progressing: the canary analysis is underway
+WaitingPromotion: the canary analysis is finished and the primary spec has been updated
+Promoting: the canary analysis is finished and the primary spec has been updated
+Finalising:  the canary analysis has been successful
+Succeeded: the canary analysis has been successful and the canary deployment has been promoted
+Failed: the canary analysis failed and the canary deployment has been scaled to zero
+
+Initialized  ->  Progressing: if shouldAdvance and no exists ConfirmRolloutHooks
+Progressing --> WaitingPromotion: if analysis success and exists ConfirmPromotionHooks
+WaitingPromotion --> Promoting: if confirm
+Progressing --> Promoting:  if  analysis success and no exists ConfirmPromotionHooks
+Initialized --> Waiting: if shouldAdvance and exists ConfirmRolloutHooks
+Waiting --> Progressing: if approved
+Promoting --> Finalising: primary use latest revision
+Finalising --> Succeeded: scale canary to zero
+Progressing --> Failed: if analysis failed, then rollback
+Progressing --> Succeeded: if skipAnalysis
+
+Progressing -[#blue,dotted]-> Progressing: if restart, then canaryWeight = 0
+WaitingPromotion -[#blue,dotted]-> Progressing: if restart, then canaryWeight = 0
+Promoting -[#blue,dotted]-> Progressing: if restart, then canaryWeight = 0
+Finalising -[#blue,dotted]-> Progressing: if restart, then canaryWeight = 0
+
+Failed -[#hotpink,dashed]-> Progressing: if target changed  and no exists ConfirmRolloutHooks
+Succeeded -[#hotpink,dashed]-> Progressing: if target changed and no exists ConfirmRolloutHooks
+Failed -up[#hotpink,dashed]-> Waiting: if target changed  and  exists ConfirmRolloutHooks
+Succeeded -up[#hotpink,dashed]-> Waiting: if target changed and exists ConfirmRolloutHooks
+}
+
+
+state DeleteProcess {
+Terminating: the canary has been marked for deletion and in the finalizing state
+Terminated: the canary has been finalized and successfully deleted
+
+
+AnyState --> Terminating: Resume target scaler so that the targetRef Deployment is not stuck at 0 replicas.
+Terminating --> Terminated
+}
+
+@enduml
