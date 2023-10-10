@@ -1,0 +1,46 @@
+@startuml
+start
+: Initialized;
+
+repeat
+  #Yellow::Call-ConfirmRolloutHook;
+  #Pink:Waiting;
+repeat while ( confirmed? ) is (no)
+->yes;
+
+partition "State Progressing" {
+if (canary weight is zero) then
+    #Yellow:: Call-PreRolloutHook;
+endif
+: runAnalysis;
+#Yellow: Call-RolloutHook;
+
+while (analysis) is (success)
+    #Yellow:Call-RollbackHook;
+    if (rollback? ) then (yes)
+       #Pink: Update State-Failed;
+       : Call-PostRolloutHook;
+       stop
+    endif
+    while (canaryWeight < maxWeight?)
+    #Yellow:if (Call-ConfirmTrafficIncreaseHook) then ( confirmed? )
+     :calculate nextStepWeight;
+     :updateCanary;
+    endif
+    endwhile
+    repeat
+      #Yellow: Call-ConfirmPromotionHook;
+      #Pink: Update State-WaitingPromotion;
+    repeat while ( confirmed? ) is (no)
+    ->yes;
+    #Pink: Update State-Promoting;
+    #Pink: Update State-Finalising;
+    #Pink: Update State-Succeeded;
+    #Yellow: Call-PostRolloutHook;
+    end
+endwhile (failed)
+    #Pink: Update State-Failed;
+    #Yellow:: Call-PostRolloutHook;
+
+}
+@enduml
